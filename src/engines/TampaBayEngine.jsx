@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 
 // Tampa Bay HAB Correlation Analysis Engine
 // SYAN.EARTH - Regional Analysis Module
