@@ -175,23 +175,6 @@ PROJECT: SYAN.EARTH - Living Earth Digital Twin for HAB Detection
 USER QUERY: ${userQuery}`;
 
     try {
-      const tools = [];
-      
-      if (searchEnabled) {
-        tools.push({
-          type: "web_search_20250305",
-          name: "web_search"
-        });
-      }
-      
-      if (notionEnabled) {
-        tools.push({
-          type: "url",
-          url: "https://mcp.notion.com/mcp",
-          name: "notion-mcp"
-        });
-      }
-
       const requestBody = {
         model: "claude-sonnet-4-6",
         max_tokens: 2000,
@@ -201,13 +184,8 @@ USER QUERY: ${userQuery}`;
         ]
       };
 
-      if (tools.length > 0) {
-        if (searchEnabled) {
-          requestBody.tools = [{ type: "web_search_20250305", name: "web_search" }];
-        }
-        if (notionEnabled) {
-          requestBody.mcp_servers = [{ type: "url", url: "https://mcp.notion.com/mcp", name: "notion-mcp" }];
-        }
+      if (searchEnabled) {
+        requestBody.tools = [{ type: "web_search_20250305", name: "web_search" }];
       }
 
       const response = await fetch("/.netlify/functions/analyze", {
@@ -216,8 +194,15 @@ USER QUERY: ${userQuery}`;
         body: JSON.stringify(requestBody)
       });
 
-      const data = await response.json();
-      
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Server error (HTTP ${response.status}). Check Netlify function logs.`);
+      }
+      if (data.error) throw new Error(data.error);
+
       const textContent = data.content
         ?.filter(item => item.type === "text")
         ?.map(item => item.text)

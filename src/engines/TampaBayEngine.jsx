@@ -320,20 +320,11 @@ Focus on:
     try {
       const prompt = generatePrompt();
       const tools = [];
-      const mcpServers = [];
 
       if (enableWebSearch) {
         tools.push({
           type: "web_search_20250305",
           name: "web_search"
-        });
-      }
-
-      if (enableNotion) {
-        mcpServers.push({
-          type: "url",
-          url: "https://mcp.notion.com/mcp",
-          name: "notion-mcp"
         });
       }
 
@@ -357,9 +348,6 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
 
       if (tools.length > 0) {
         requestBody.tools = tools;
-      }
-      if (mcpServers.length > 0) {
-        requestBody.mcp_servers = mcpServers;
       }
 
       const response = await fetch("/.netlify/functions/analyze", {

@@ -73,10 +73,8 @@ Format response as JSON.`;
       if (hasWebSearch) betaHeaders.push('web-search-2025-03-05');
     }
 
-    // Pass through mcp_servers if provided
-    if (body.mcp_servers && body.mcp_servers.length > 0) {
-      requestBody.mcp_servers = body.mcp_servers;
-    }
+    // Note: mcp_servers is NOT a valid Anthropic API parameter — intentionally excluded.
+    // Notion integration is handled server-side via the save-finding function.
 
     const headers = {
       'Content-Type': 'application/json',
