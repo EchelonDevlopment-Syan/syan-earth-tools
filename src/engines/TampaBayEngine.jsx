@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SensorMonitorPanel from './SensorMonitorPanel';
 
 // Tampa Bay HAB Correlation Analysis Engine
 // SYAN.EARTH - Regional Analysis Module
@@ -797,6 +798,8 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
           SYAN.EARTH Regional Analysis Module • MacDill • Egmont Key • Fort De Soto • Skyway Bridge
         </p>
       </header>
+
+      <SensorMonitorPanel />
 
       <div style={styles.grid}>
         {/* Left Panel - Map and Sources */}
