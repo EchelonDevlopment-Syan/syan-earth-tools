@@ -16,13 +16,36 @@ const NOTION_DATABASES = {
   }
 };
 
+// API endpoint configuration for data subscriptions
+const API_ENDPOINTS = {
+  copernicus: {
+    // Copernicus Marine Service - Global Ocean Physics Analysis and Forecast
+    product: 'GLOBAL_ANALYSISFORECAST_PHY_001_024',
+    baseUrl: 'https://nrt.cmems-du.eu/motu-web/Motu',
+    wmsUrl: 'https://nrt.cmems-du.eu/thredds/wms/cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m',
+    variables: ['thetao', 'so', 'uo', 'vo', 'zos'],
+    description: 'SST, salinity, currents, sea level — daily 1/12° global grid',
+    authNote: 'Requires CMEMS credentials via COPERNICUS_MARINE_USER / COPERNICUS_MARINE_PASSWORD env vars'
+  },
+  ceda: {
+    // CEDA MIDAS Open - UK Met station observations archive
+    baseUrl: 'https://data.ceda.ac.uk/badc/ukmo-midas-open/data',
+    catalogUrl: 'https://catalogue.ceda.ac.uk/uuid/dbd451271eb04662beade68da43546e1',
+    variables: ['air_temperature', 'wind_speed', 'wind_direction', 'rainfall', 'pressure', 'humidity'],
+    stations: ['heathrow', 'oxford', 'armagh', 'durham', 'sheffield', 'edinburgh'],
+    format: 'CSV (station-based, hourly/daily)',
+    description: 'UK Met station network since 1853 — temperature, wind, rainfall, pressure',
+    authNote: 'Requires CEDA account credentials via CEDA_API_KEY env var'
+  }
+};
+
 const DATA_SOURCES = [
   { id: 'weather-rescue', name: 'Weather Rescue 1861', domain: 'weather', color: '#e63946', years: '1861-1875' },
   { id: 'met-office', name: 'Met Office Historic', domain: 'weather', color: '#457b9d', years: '1853-2024' },
   { id: 'hadcet', name: 'HadCET', domain: 'weather', color: '#6a4c93', years: '1659-2024' },
-  { id: 'ceda', name: 'CEDA MIDAS', domain: 'weather', color: '#1d3557', years: '1853-2024' },
+  { id: 'ceda', name: 'CEDA MIDAS', domain: 'weather', color: '#1d3557', years: '1853-2024', apiConfig: API_ENDPOINTS.ceda },
   { id: 'met-eireann', name: 'Met Éireann', domain: 'weather', color: '#2a9d8f', years: '1881-2024' },
-  { id: 'copernicus', name: 'Copernicus Marine', domain: 'ocean', color: '#e9c46a', years: '1993-2024' },
+  { id: 'copernicus', name: 'Copernicus Marine', domain: 'ocean', color: '#e9c46a', years: '1993-2024', apiConfig: API_ENDPOINTS.copernicus },
   { id: 'bioargo', name: 'Bio-Argo', domain: 'biology', color: '#52b788', years: '2012-2024' },
   { id: 'noaa-sst', name: 'NOAA SST', domain: 'ocean', color: '#f4a261', years: '1981-2024' }
 ];
@@ -70,6 +93,43 @@ export default function CorrelationAnalysisEngine() {
   const [error, setError] = useState(null);
   const [searchEnabled, setSearchEnabled] = useState(true);
   const [notionEnabled, setNotionEnabled] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null);
+
+  const saveToNotion = async () => {
+    if (!results || !results.analysis) return;
+
+    setIsSaving(true);
+    setSaveStatus(null);
+
+    try {
+      const finding = {
+        title: `Global Correlation: ${results.sources.map(s => s.name).join(' × ')} - ${new Date().toLocaleDateString()}`,
+        analysisText: results.analysis,
+        dataSources: results.sources.map(s => s.name),
+        analysisType,
+        timestamp: results.timestamp
+      };
+
+      const response = await fetch('/.netlify/functions/save-finding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finding)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSaveStatus({ success: true, url: data.url });
+      } else {
+        setSaveStatus({ success: false, error: data.error || 'Failed to save' });
+      }
+    } catch (err) {
+      setSaveStatus({ success: false, error: err.message });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const toggleSource = useCallback((sourceId) => {
     setSelectedSources(prev => 
@@ -95,9 +155,16 @@ export default function CorrelationAnalysisEngine() {
     const systemPrompt = ANALYSIS_PROMPTS[analysisType];
     const userQuery = customQuery || `Analyze correlation potential between: ${selectedData.map(s => s.name).join(', ')}`;
 
+    // Include API endpoint details for sources that have them
+    const apiDetails = selectedData
+      .filter(s => s.apiConfig)
+      .map(s => `- ${s.name}: ${s.apiConfig.description} [Product: ${s.apiConfig.product || 'Archive'}, Base URL: ${s.apiConfig.baseUrl}]`)
+      .join('\n');
+
     const contextInfo = `
 SELECTED DATA SOURCES:
 ${selectedData.map(s => `- ${s.name} (${s.domain}, ${s.years})`).join('\n')}
+${apiDetails ? `\nAPI ENDPOINTS:\n${apiDetails}` : ''}
 
 DOMAIN COVERAGE:
 ${domains.length === 1 ? `Single domain: ${domains[0]}` : `Cross-domain: ${domains.join(', ')}`}
@@ -599,19 +666,43 @@ USER QUERY: ${userQuery}`;
                 📋 Copy Analysis
               </button>
               <button
-                onClick={() => window.open(`https://www.notion.so/${NOTION_DATABASES.findings.id}`, '_blank')}
+                onClick={saveToNotion}
+                disabled={isSaving}
                 style={{
                   padding: '12px 24px',
-                  background: 'rgba(0, 255, 212, 0.1)',
+                  background: isSaving ? 'rgba(107, 114, 128, 0.3)' : 'rgba(0, 255, 212, 0.1)',
                   border: '1px solid rgba(0, 255, 212, 0.3)',
                   borderRadius: '8px',
                   color: '#00ffd4',
                   fontSize: '13px',
-                  cursor: 'pointer'
+                  cursor: isSaving ? 'not-allowed' : 'pointer'
                 }}
               >
-                📝 Save to Notion Findings
+                {isSaving ? '⏳ Saving...' : saveStatus?.success ? '✅ Saved!' : '📝 Save to Notion Findings'}
               </button>
+              {saveStatus?.success && saveStatus.url && (
+                <a
+                  href={saveStatus.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '12px 24px',
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    borderRadius: '8px',
+                    color: '#22c55e',
+                    fontSize: '13px',
+                    textDecoration: 'none'
+                  }}
+                >
+                  📄 View in Notion
+                </a>
+              )}
+              {saveStatus && !saveStatus.success && (
+                <span style={{ fontSize: '11px', color: '#ef4444', padding: '12px 0' }}>
+                  Error: {saveStatus.error}
+                </span>
+              )}
               <button
                 onClick={() => window.open(`https://www.notion.so/${NOTION_DATABASES.archive.id}`, '_blank')}
                 style={{

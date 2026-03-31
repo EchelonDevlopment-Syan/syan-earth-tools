@@ -13,6 +13,48 @@ const TampaBayCorrelationEngine = () => {
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [enableNotion, setEnableNotion] = useState(true);
   const [hoveredLocation, setHoveredLocation] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null);
+
+  // Save correlation findings to Notion database
+  const saveToNotion = async () => {
+    if (!results || !results.text) return;
+
+    setIsSaving(true);
+    setSaveStatus(null);
+
+    try {
+      const selectedData = selectedSources.map(id =>
+        tampaBayDataSources.find(s => s.id === id)
+      ).filter(Boolean);
+
+      const finding = {
+        title: `Tampa Bay ${analysisTypes.find(t => t.id === results.analysisType)?.name || 'Analysis'} - ${new Date().toLocaleDateString()}`,
+        analysisText: results.text,
+        dataSources: selectedData.map(s => s.name),
+        analysisType: results.analysisType,
+        timestamp: results.timestamp
+      };
+
+      const response = await fetch('/.netlify/functions/save-finding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finding)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSaveStatus({ success: true, url: data.url });
+      } else {
+        setSaveStatus({ success: false, error: data.error || 'Failed to save' });
+      }
+    } catch (error) {
+      setSaveStatus({ success: false, error: error.message });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Tampa Bay Data Sources with geographic coordinates
   const tampaBayDataSources = [
@@ -209,8 +251,7 @@ const TampaBayCorrelationEngine = () => {
     
     const sourceDescriptions = sources.map(s => 
       `- ${s.name} (${s.years}): ${s.description}`
-    ).join('\
-');
+    ).join('\n');
 
     const prompts = {
       hab_prediction: `Analyze these Tampa Bay data sources for HAB prediction capability:
@@ -321,7 +362,7 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
         requestBody.mcp_servers = mcpServers;
       }
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -334,8 +375,7 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
       const analysisText = data.content
         ?.filter(item => item.type === "text")
         .map(item => item.text)
-        .join("\
-") || "Analysis completed but no text response received.";
+        .join("\n") || "Analysis completed but no text response received.";
 
       setResults({
         text: analysisText,
@@ -351,9 +391,7 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
     } catch (error) {
       console.error('Analysis error:', error);
       setResults({
-        text: `Analysis error: ${error.message}\
-\
-This may be due to API configuration. The Tampa Bay data sources have been successfully added to your Notion database and are ready for analysis.`,
+        text: `Analysis error: ${error.message}\n\nThis may be due to API configuration. The Tampa Bay data sources have been successfully added to your Notion database and are ready for analysis.`,
         sources: selectedSources,
         analysisType,
         timestamp: new Date().toISOString(),
@@ -994,18 +1032,33 @@ This may be due to API configuration. The Tampa Bay data sources have been succe
             >
               📋 Copy Analysis
             </button>
-            <a
-              href="https://www.notion.so/e7429a2c9fac4c1d9c3bb0abb93be628"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ 
-                ...styles.smallButton, 
-                textDecoration: 'none',
-                background: '#8b5cf6'
+            <button
+              style={{
+                ...styles.smallButton,
+                background: isSaving ? '#6b7280' : '#8b5cf6',
+                color: '#fff',
+                cursor: isSaving ? 'not-allowed' : 'pointer'
               }}
+              onClick={saveToNotion}
+              disabled={isSaving}
             >
-              💾 Save to Findings
-            </a>
+              {isSaving ? '⏳ Saving...' : saveStatus?.success ? '✅ Saved!' : '💾 Save to Findings'}
+            </button>
+            {saveStatus?.success && saveStatus.url && (
+              <a
+                href={saveStatus.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ ...styles.smallButton, textDecoration: 'none', background: '#22c55e', color: '#fff' }}
+              >
+                📄 View in Notion
+              </a>
+            )}
+            {saveStatus && !saveStatus.success && (
+              <span style={{ fontSize: '9px', color: '#ef4444' }}>
+                Error: {saveStatus.error}
+              </span>
+            )}
             <a
               href="https://www.notion.so/ea822bbc8b48422ca0925ea93a0bdade"
               target="_blank"
