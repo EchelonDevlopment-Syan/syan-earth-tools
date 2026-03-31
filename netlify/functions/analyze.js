@@ -55,7 +55,7 @@ Format response as JSON.`;
 
     const requestBody = {
       model: body.model || 'claude-sonnet-4-6',
-      max_tokens: body.max_tokens || 4096,
+      max_tokens: body.max_tokens || 1500,
       messages: messages
     };
 
@@ -88,7 +88,8 @@ Format response as JSON.`;
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers,
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(24000)  // 24s — under Netlify's 26s limit
     });
 
     const responseText = await response.text();
