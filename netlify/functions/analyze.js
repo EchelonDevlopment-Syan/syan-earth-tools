@@ -54,7 +54,7 @@ Format response as JSON.`;
     }
 
     const requestBody = {
-      model: body.model || 'claude-sonnet-4-20250514',
+      model: body.model || 'claude-sonnet-4-6',
       max_tokens: body.max_tokens || 4096,
       messages: messages
     };
@@ -62,21 +62,48 @@ Format response as JSON.`;
     if (body.system) {
       requestBody.system = body.system;
     } else if (body.query) {
-      // Add default system prompt for query mode
       requestBody.system = 'You are the SYAN.EARTH Correlation Engine, an expert in climate-ocean-biology pattern analysis. Focus on harmful algal blooms, particularly Karenia brevis in Tampa Bay and Gulf of Mexico. Provide scientifically grounded analysis with practical applications.';
+    }
+
+    // Pass through tools if provided
+    const betaHeaders = [];
+    if (body.tools && body.tools.length > 0) {
+      requestBody.tools = body.tools;
+      const hasWebSearch = body.tools.some(t => t.type === 'web_search_20250305');
+      if (hasWebSearch) betaHeaders.push('web-search-2025-03-05');
+    }
+
+    // Pass through mcp_servers if provided
+    if (body.mcp_servers && body.mcp_servers.length > 0) {
+      requestBody.mcp_servers = body.mcp_servers;
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    };
+    if (betaHeaders.length > 0) {
+      headers['anthropic-beta'] = betaHeaders.join(',');
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
+      headers,
       body: JSON.stringify(requestBody)
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      return {
+        statusCode: 502,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: `Anthropic API returned non-JSON response (status ${response.status})`, raw: responseText.slice(0, 200) })
+      };
+    }
 
     return {
       statusCode: response.status,

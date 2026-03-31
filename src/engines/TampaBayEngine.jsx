@@ -338,7 +338,7 @@ Focus on:
       }
 
       const requestBody = {
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2500,
         system: `You are an expert oceanographer and climate scientist analyzing Tampa Bay data for the SYAN.EARTH Living Earth Digital Twin platform. You specialize in harmful algal bloom (HAB) prediction, particularly Karenia brevis (red tide) and Pyrodinium bahamense dynamics.
 
@@ -370,8 +370,18 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
         body: JSON.stringify(requestBody)
       });
 
-      const data = await response.json();
-      
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Server returned non-JSON response (HTTP ${response.status}). Check Netlify function logs.`);
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
       const analysisText = data.content
         ?.filter(item => item.type === "text")
         .map(item => item.text)
