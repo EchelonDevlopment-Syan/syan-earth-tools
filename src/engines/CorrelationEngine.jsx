@@ -91,7 +91,7 @@ export default function CorrelationAnalysisEngine() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  const [searchEnabled, setSearchEnabled] = useState(true);
+  const [searchEnabled, setSearchEnabled] = useState(false);
   const [notionEnabled, setNotionEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -177,7 +177,7 @@ USER QUERY: ${userQuery}`;
     try {
       const requestBody = {
         model: "claude-sonnet-4-6",
-        max_tokens: 2000,
+        max_tokens: 1500,
         system: systemPrompt,
         messages: [
           { role: "user", content: contextInfo }
@@ -201,7 +201,12 @@ USER QUERY: ${userQuery}`;
       } catch {
         throw new Error(`Server error (HTTP ${response.status}). Check Netlify function logs.`);
       }
-      if (data.error) throw new Error(data.error);
+      if (data.error) {
+        const msg = typeof data.error === 'object'
+          ? (data.error.message || JSON.stringify(data.error))
+          : data.error;
+        throw new Error(msg);
+      }
 
       const textContent = data.content
         ?.filter(item => item.type === "text")

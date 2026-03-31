@@ -10,7 +10,7 @@ const TampaBayCorrelationEngine = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState(null);
   const [activeTab, setActiveTab] = useState('sources');
-  const [enableWebSearch, setEnableWebSearch] = useState(true);
+  const [enableWebSearch, setEnableWebSearch] = useState(false);
   const [enableNotion, setEnableNotion] = useState(true);
   const [hoveredLocation, setHoveredLocation] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -330,7 +330,7 @@ Focus on:
 
       const requestBody = {
         model: "claude-sonnet-4-6",
-        max_tokens: 2500,
+        max_tokens: 1500,
         system: `You are an expert oceanographer and climate scientist analyzing Tampa Bay data for the SYAN.EARTH Living Earth Digital Twin platform. You specialize in harmful algal bloom (HAB) prediction, particularly Karenia brevis (red tide) and Pyrodinium bahamense dynamics.
 
 Key Tampa Bay context:
@@ -367,13 +367,19 @@ Provide actionable insights for aquaculture operators, coastal managers, and the
       }
 
       if (data.error) {
-        throw new Error(data.error);
+        const msg = typeof data.error === 'object'
+          ? (data.error.message || JSON.stringify(data.error))
+          : data.error;
+        throw new Error(msg);
       }
 
-      const analysisText = data.content
-        ?.filter(item => item.type === "text")
+      // Collect text blocks; also extract text from tool_result blocks if present
+      const analysisText = (data.content || [])
+        .filter(item => item.type === "text")
         .map(item => item.text)
-        .join("\n") || "Analysis completed but no text response received.";
+        .join("\n")
+        || (data.content || []).map(item => item.text || item.content || '').filter(Boolean).join("\n")
+        || (data.stop_reason === 'tool_use' ? "Web search ran but returned no summary text. Try disabling Web Search and rerunning." : "Analysis completed but no text response received.");
 
       setResults({
         text: analysisText,
