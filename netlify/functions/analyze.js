@@ -89,7 +89,7 @@ Format response as JSON.`;
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(24000)  // 24s — under Netlify's 26s limit
+      signal: AbortSignal.timeout(55000)  // 55s — under Netlify's 60s limit
     });
 
     const responseText = await response.text();

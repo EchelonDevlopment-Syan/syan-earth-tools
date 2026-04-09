@@ -26,7 +26,11 @@ export default function SensorMonitorPanel() {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/.netlify/functions/sensor-monitor');
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch {
+        throw new Error(`Sensor monitor returned non-JSON (HTTP ${res.status}). Function may be cold-starting — retrying shortly.`);
+      }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setStatus(data);
       setError(null);
@@ -42,7 +46,11 @@ export default function SensorMonitorPanel() {
     setTriggering(true);
     try {
       const res = await fetch('/.netlify/functions/sensor-monitor', { method: 'POST' });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch {
+        throw new Error(`Sensor monitor returned non-JSON (HTTP ${res.status}). Please try again.`);
+      }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setStatus(data);
       setLastPoll(new Date());
