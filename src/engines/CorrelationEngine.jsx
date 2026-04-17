@@ -177,7 +177,7 @@ USER QUERY: ${userQuery}`;
     try {
       const requestBody = {
         model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        max_tokens: 2500,
         system: systemPrompt,
         messages: [
           { role: "user", content: contextInfo }
@@ -186,6 +186,10 @@ USER QUERY: ${userQuery}`;
 
       if (searchEnabled) {
         requestBody.tools = [{ type: "web_search_20250305", name: "web_search" }];
+      }
+
+      if (notionEnabled) {
+        requestBody.notionEnabled = true;
       }
 
       const response = await fetch("/.netlify/functions/analyze", {

@@ -55,7 +55,7 @@ Format response as JSON.`;
 
     const requestBody = {
       model: body.model || 'claude-sonnet-4-6',
-      max_tokens: body.max_tokens || 1500,
+      max_tokens: body.max_tokens || 2500,
       messages: messages
     };
 
@@ -73,8 +73,20 @@ Format response as JSON.`;
       if (hasWebSearch) betaHeaders.push('web-search-2025-03-05');
     }
 
-    // Note: mcp_servers is NOT a valid Anthropic API parameter — intentionally excluded.
-    // Notion integration is handled server-side via the save-finding function.
+    // Notion MCP — built server-side so the token never touches the frontend.
+    // Frontend sends notionEnabled: true; this function injects the auth header.
+    if (body.notionEnabled) {
+      const notionToken = process.env.Notion_API_KEY || process.env.NOTION_API_KEY;
+      if (notionToken) {
+        requestBody.mcp_servers = [{
+          type: 'url',
+          url: 'https://mcp.notion.com/mcp',
+          name: 'notion',
+          authorization_token: notionToken
+        }];
+        betaHeaders.push('mcp-client-2025-04-04');
+      }
+    }
 
     const headers = {
       'Content-Type': 'application/json',
