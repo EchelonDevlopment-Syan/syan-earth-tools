@@ -1,138 +1,135 @@
-exports.handler = async (event) => {
-  // Handle CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      },
-      body: ''
-    };
-  }
-
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
-  try {
-    const body = JSON.parse(event.body);
-    
-    // Build messages array - handle both formats
-    let messages;
-    if (body.messages) {
-      // Frontend sent messages directly
-      messages = body.messages;
-    } else if (body.query) {
-      // Frontend sent query/dataSources format - convert it
-      const userContent = `Analyze this climate correlation query:
-
-Query: ${body.query}
-
-Data Sources to consider: ${(body.dataSources || []).join(', ')}
-
-Provide analysis with:
-1. Finding title
-2. Confidence score (0-100%)
-3. Correlation type
-4. Key variables
-5. R-value estimate
-6. Layman's summary (2-3 sentences anyone can understand)
-7. Problem solved (real-world impact)
-8. Ideal organizations that would benefit
-
-Format response as JSON.`;
-
-      messages = [{ role: 'user', content: userContent }];
-    } else {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: 'Missing required field: messages or query' })
-      };
+export default async (req) => {
+    if (req.method === 'OPTIONS') {
+          return new Response('', {
+                  status: 200,
+                  headers: {
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Headers': 'Content-Type',
+                            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+                  }
+          });
     }
 
-    const requestBody = {
-      model: body.model || 'claude-sonnet-4-6',
-      max_tokens: body.max_tokens || 2500,
-      messages: messages
-    };
-
-    if (body.system) {
-      requestBody.system = body.system;
-    } else if (body.query) {
-      requestBody.system = 'You are the SYAN.EARTH Correlation Engine, an expert in climate-ocean-biology pattern analysis. Focus on harmful algal blooms, particularly Karenia brevis in Tampa Bay and Gulf of Mexico. Provide scientifically grounded analysis with practical applications.';
+    if (req.method !== 'POST') {
+          return new Response('Method Not Allowed', { status: 405 });
     }
 
-    // Pass through tools if provided
-    const betaHeaders = [];
-    if (body.tools && body.tools.length > 0) {
-      requestBody.tools = body.tools;
-      const hasWebSearch = body.tools.some(t => t.type === 'web_search_20250305');
-      if (hasWebSearch) betaHeaders.push('web-search-2025-03-05');
-    }
-
-    // Notion MCP — built server-side so the token never touches the frontend.
-    // Frontend sends notionEnabled: true; this function injects the auth header.
-    if (body.notionEnabled) {
-      const notionToken = process.env.Notion_API_KEY || process.env.NOTION_API_KEY;
-      if (notionToken) {
-        requestBody.mcp_servers = [{
-          type: 'url',
-          url: 'https://mcp.notion.com/mcp',
-          name: 'notion',
-          authorization_token: notionToken
-        }];
-        betaHeaders.push('mcp-client-2025-04-04');
-      }
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    };
-    if (betaHeaders.length > 0) {
-      headers['anthropic-beta'] = betaHeaders.join(',');
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(55000)  // 55s — under Netlify's 60s limit
-    });
-
-    const responseText = await response.text();
-    let data;
     try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      return {
-        statusCode: 502,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: `Anthropic API returned non-JSON response (status ${response.status})`, raw: responseText.slice(0, 200) })
+          const body = await req.json();
+
+      let messages;
+          if (body.messages) {
+                  messages = body.messages;
+          } else if (body.query) {
+                  const userContent = `Analyze this climate correlation query:\n\nQuery: ${body.query}\n\nData Sources to consider: ${(body.dataSources || []).join(', ')}\n\nProvide analysis with:\n1. Finding title\n2. Confidence score (0-100%)\n3. Correlation type\n4. Key variables\n5. R-value estimate\n6. Layman summary\n7. Problem solved\n8. Ideal organizations\n\nFormat response as JSON.`;
+                  messages = [{ role: 'user', content: userContent }];
+          } else {
+                  return new Response(
+                            JSON.stringify({ error: 'Missing required field: messages or query' }),
+                    { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                          );
+          }
+
+      const requestBody = {
+              model: body.model || 'claude-sonnet-4-6',
+              max_tokens: body.max_tokens || 2500,
+              messages,
+              stream: true
       };
+
+      if (body.system) {
+              requestBody.system = body.system;
+      } else if (body.query) {
+              requestBody.system = 'You are the SYAN.EARTH Correlation Engine, an expert in climate-ocean-biology pattern analysis. Focus on harmful algal blooms, particularly Karenia brevis in Tampa Bay and Gulf of Mexico. Provide scientifically grounded analysis with practical applications.';
+      }
+
+      const betaHeaders = [];
+          if (body.tools && body.tools.length > 0) {
+                  requestBody.tools = body.tools;
+                  const hasWebSearch = body.tools.some(t => t.type === 'web_search_20250305');
+                  if (hasWebSearch) betaHeaders.push('web-search-2025-03-05');
+          }
+
+      if (body.notionEnabled) {
+              const notionToken = process.env.Notion_API_KEY || process.env.NOTION_API_KEY;
+              if (notionToken) {
+                        try {
+                                    const notionHeaders = {
+                                                  'Authorization': `Bearer ${notionToken}`,
+                                                  'Notion-Version': '2022-06-28',
+                                                  'Content-Type': 'application/json'
+                                    };
+                                    const [archiveRes, findingsRes] = await Promise.all([
+                                                  fetch('https://api.notion.com/v1/databases/ea822bbc8b48422ca0925ea93a0bdade/query', {
+                                                                  method: 'POST', headers: notionHeaders,
+                                                                  body: JSON.stringify({ page_size: 8, sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }] })
+                                                  }),
+                                                  fetch('https://api.notion.com/v1/databases/e7429a2c9fac4c1d9c3bb0abb93be628/query', {
+                                                                  method: 'POST', headers: notionHeaders,
+                                                                  body: JSON.stringify({ page_size: 8, sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }] })
+                                                  })
+                                                ]);
+                                    const archiveData = archiveRes.ok ? await archiveRes.json() : null;
+                                    const findingsData = findingsRes.ok ? await findingsRes.json() : null;
+                                    const extractTitle = (page) => {
+                                                  const titleProp = Object.values(page.properties || {}).find(p => p.type === 'title');
+                                                  return titleProp?.title?.[0]?.plain_text || 'Untitled';
+                                    };
+                                    let notionContext = '\n\nNOTION CLIMATE ARCHIVE CONTEXT:\n';
+                                    if (archiveData?.results?.length) {
+                                                  notionContext += '\nClimate Data Archive (recent entries):\n';
+                                                  archiveData.results.forEach(p => { notionContext += `- ${extractTitle(p)}\n`; });
+                                    }
+                                    if (findingsData?.results?.length) {
+                                                  notionContext += '\nCorrelation Findings (recent discoveries):\n';
+                                                  findingsData.results.forEach(p => { notionContext += `- ${extractTitle(p)}\n`; });
+                                    }
+                                    if (requestBody.system) requestBody.system += notionContext;
+                        } catch (notionErr) {
+                                    console.error('Notion fetch error:', notionErr.message);
+                        }
+              }
+      }
+
+      const headers = {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01'
+      };
+          if (betaHeaders.length > 0) {
+                  headers['anthropic-beta'] = betaHeaders.join(',');
+          }
+
+      const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(requestBody)
+      });
+
+      if (!anthropicResponse.ok) {
+              const errorText = await anthropicResponse.text();
+              return new Response(
+                        JSON.stringify({ error: `Anthropic API error (${anthropicResponse.status})`, detail: errorText.slice(0, 300) }),
+                { status: anthropicResponse.status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                      );
+      }
+
+      return new Response(anthropicResponse.body, {
+              status: 200,
+              headers: {
+                        'Content-Type': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        'Connection': 'keep-alive',
+                        'Access-Control-Allow-Origin': '*'
+              }
+      });
+
+    } catch (error) {
+          return new Response(
+                  JSON.stringify({ error: error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                );
     }
-
-    return {
-      statusCode: response.status,
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Access-Control-Allow-Origin': '*' 
-      },
-      body: JSON.stringify(data)
-    };
-
-  } catch (error) {
-    return { 
-      statusCode: 500, 
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Access-Control-Allow-Origin': '*' 
-      }, 
-      body: JSON.stringify({ error: error.message }) 
-    };
-  }
 };
+
+export const config = { path: '/netlify/functions/analyze' };
