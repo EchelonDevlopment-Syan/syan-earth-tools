@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-
+ 
 // SYAN.EARTH Correlation Analysis Engine
 // Uses Claude API to analyze cross-domain patterns between weather/ocean/plankton data
-
+ 
 const NOTION_DATABASES = {
   archive: {
     id: 'ea822bbc8b48422ca0925ea93a0bdade',
@@ -15,7 +15,7 @@ const NOTION_DATABASES = {
     name: '🔬 Correlation Findings'
   }
 };
-
+ 
 // API endpoint configuration for data subscriptions
 const API_ENDPOINTS = {
   copernicus: {
@@ -38,7 +38,7 @@ const API_ENDPOINTS = {
     authNote: 'Requires CEDA account credentials via CEDA_API_KEY env var'
   }
 };
-
+ 
 const DATA_SOURCES = [
   { id: 'weather-rescue', name: 'Weather Rescue 1861', domain: 'weather', color: '#e63946', years: '1861-1875' },
   { id: 'met-office', name: 'Met Office Historic', domain: 'weather', color: '#457b9d', years: '1853-2024' },
@@ -49,41 +49,41 @@ const DATA_SOURCES = [
   { id: 'bioargo', name: 'Bio-Argo', domain: 'biology', color: '#52b788', years: '2012-2024' },
   { id: 'noaa-sst', name: 'NOAA SST', domain: 'ocean', color: '#f4a261', years: '1981-2024' }
 ];
-
+ 
 const ANALYSIS_PROMPTS = {
   'cross-domain': `You are an expert climate scientist analyzing historical and modern environmental data for the SYAN.EARTH platform. Analyze the correlation potential between the selected data sources.
-
+ 
 Consider:
 1. Temporal overlap between datasets
 2. Geographic compatibility (UK, Ireland, North Atlantic)
 3. Physical mechanisms linking the variables
 4. Known climate teleconnections (AMO, NAO, etc.)
 5. Statistical considerations for correlation analysis
-
+ 
 Provide:
 - Hypothesis for potential correlation
 - Expected R-value range and confidence
 - Recommended time period for analysis
 - Key variables to examine
 - Caveats and limitations`,
-
+ 
   'bloom-prediction': `You are analyzing climate data to improve harmful algal bloom (HAB) prediction models. Based on the selected datasets, identify:
-
+ 
 1. Leading indicators for bloom events (SST thresholds, nutrient patterns)
 2. Lag times between environmental triggers and bloom onset
 3. Geographic hotspots where data coverage enables prediction
 4. Historical bloom events in the data record
 5. Integration pathway into SYAN.EARTH monitoring system`,
-
+ 
   'trend-analysis': `Analyze long-term trends in the selected climate data sources. Focus on:
-
+ 
 1. Decadal variability patterns
 2. Acceleration/deceleration of trends since 1980
 3. Comparison with IPCC AR6 regional projections
 4. Implications for coastal communities and fisheries
 5. Data gaps that limit trend confidence`
 };
-
+ 
 export default function CorrelationAnalysisEngine() {
   const [selectedSources, setSelectedSources] = useState([]);
   const [analysisType, setAnalysisType] = useState('cross-domain');
@@ -95,13 +95,14 @@ export default function CorrelationAnalysisEngine() {
   const [notionEnabled, setNotionEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
-
+  const [streamingText, setStreamingText] = useState('');
+ 
   const saveToNotion = async () => {
     if (!results || !results.analysis) return;
-
+ 
     setIsSaving(true);
     setSaveStatus(null);
-
+ 
     try {
       const finding = {
         title: `Global Correlation: ${results.sources.map(s => s.name).join(' × ')} - ${new Date().toLocaleDateString()}`,
@@ -110,15 +111,15 @@ export default function CorrelationAnalysisEngine() {
         analysisType,
         timestamp: results.timestamp
       };
-
+ 
       const response = await fetch('/.netlify/functions/save-finding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(finding)
       });
-
+ 
       const data = await response.json();
-
+ 
       if (response.ok) {
         setSaveStatus({ success: true, url: data.url });
       } else {
@@ -130,7 +131,7 @@ export default function CorrelationAnalysisEngine() {
       setIsSaving(false);
     }
   };
-
+ 
   const toggleSource = useCallback((sourceId) => {
     setSelectedSources(prev => 
       prev.includes(sourceId) 
@@ -138,105 +139,130 @@ export default function CorrelationAnalysisEngine() {
         : [...prev, sourceId]
     );
   }, []);
-
+ 
   const runAnalysis = async () => {
     if (selectedSources.length < 2) {
       setError('Select at least 2 data sources to analyze correlations');
       return;
     }
-
+ 
     setIsAnalyzing(true);
     setError(null);
     setResults(null);
-
+    setStreamingText('');
+ 
     const selectedData = DATA_SOURCES.filter(s => selectedSources.includes(s.id));
     const domains = [...new Set(selectedData.map(s => s.domain))];
-    
+ 
     const systemPrompt = ANALYSIS_PROMPTS[analysisType];
     const userQuery = customQuery || `Analyze correlation potential between: ${selectedData.map(s => s.name).join(', ')}`;
-
-    // Include API endpoint details for sources that have them
+ 
     const apiDetails = selectedData
       .filter(s => s.apiConfig)
       .map(s => `- ${s.name}: ${s.apiConfig.description} [Product: ${s.apiConfig.product || 'Archive'}, Base URL: ${s.apiConfig.baseUrl}]`)
       .join('\n');
-
+ 
     const contextInfo = `
 SELECTED DATA SOURCES:
 ${selectedData.map(s => `- ${s.name} (${s.domain}, ${s.years})`).join('\n')}
 ${apiDetails ? `\nAPI ENDPOINTS:\n${apiDetails}` : ''}
-
+ 
 DOMAIN COVERAGE:
 ${domains.length === 1 ? `Single domain: ${domains[0]}` : `Cross-domain: ${domains.join(', ')}`}
-
+ 
 GEOGRAPHIC FOCUS: UK, Ireland, North Atlantic
 PROJECT: SYAN.EARTH - Living Earth Digital Twin for HAB Detection
-
+ 
 USER QUERY: ${userQuery}`;
-
+ 
     try {
       const requestBody = {
         model: "claude-sonnet-4-6",
         max_tokens: 2500,
         system: systemPrompt,
-        messages: [
-          { role: "user", content: contextInfo }
-        ]
+        messages: [{ role: "user", content: contextInfo }]
       };
-
+ 
       if (searchEnabled) {
         requestBody.tools = [{ type: "web_search_20250305", name: "web_search" }];
       }
-
+ 
       if (notionEnabled) {
         requestBody.notionEnabled = true;
       }
-
+ 
       const response = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody)
       });
-
-      const responseText = await response.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        throw new Error(`Server error (HTTP ${response.status}). Check Netlify function logs.`);
-      }
-      if (data.error) {
-        const msg = typeof data.error === 'object'
-          ? (data.error.message || JSON.stringify(data.error))
-          : data.error;
+ 
+      if (!response.ok) {
+        const errText = await response.text();
+        let msg = `Server error (HTTP ${response.status})`;
+        try { msg = JSON.parse(errText).error || msg; } catch {}
         throw new Error(msg);
       }
-
-      const textContent = data.content
-        ?.filter(item => item.type === "text")
-        ?.map(item => item.text)
-        ?.join("\n") || "No analysis returned";
-
+ 
+      // Read the SSE stream and accumulate text tokens as they arrive
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let buffer = '';
+ 
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+ 
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line for next chunk
+ 
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+          try {
+            const event = JSON.parse(jsonStr);
+            // Text delta
+            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+              accumulated += event.delta.text;
+              setStreamingText(accumulated);
+            }
+            // Error from Anthropic inside the stream
+            if (event.type === 'error') {
+              throw new Error(event.error?.message || 'Stream error from Anthropic');
+            }
+          } catch (parseErr) {
+            // Ignore malformed SSE lines (tool use blocks, ping events, etc.)
+          }
+        }
+      }
+ 
+      if (!accumulated) throw new Error('No analysis returned — check Netlify function logs.');
+ 
+      setStreamingText('');
       setResults({
-        analysis: textContent,
+        analysis: accumulated,
         sources: selectedData,
         domains: domains,
         timestamp: new Date().toISOString(),
         toolsUsed: { search: searchEnabled, notion: notionEnabled }
       });
-
+ 
     } catch (err) {
       setError(`Analysis failed: ${err.message}`);
+      setStreamingText('');
     } finally {
       setIsAnalyzing(false);
     }
   };
-
+ 
   const getDomainColor = (domain) => {
     const colors = { weather: '#457b9d', ocean: '#e9c46a', biology: '#52b788' };
     return colors[domain] || '#6c757d';
   };
-
+ 
   return (
     <div style={{
       minHeight: '100vh',
@@ -258,7 +284,7 @@ USER QUERY: ${userQuery}`;
         backgroundSize: '50px 50px',
         pointerEvents: 'none'
       }} />
-
+ 
       {/* Header */}
       <header style={{
         padding: '24px 32px',
@@ -303,7 +329,7 @@ USER QUERY: ${userQuery}`;
           </div>
         </div>
       </header>
-
+ 
       <main style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto' }}>
         {/* Data Source Selection */}
         <section style={{ marginBottom: '32px' }}>
@@ -389,7 +415,7 @@ USER QUERY: ${userQuery}`;
             })}
           </div>
         </section>
-
+ 
         {/* Analysis Configuration */}
         <section style={{ marginBottom: '32px' }}>
           <h2 style={{
@@ -500,7 +526,7 @@ USER QUERY: ${userQuery}`;
             />
           </div>
         </section>
-
+ 
         {/* Run Analysis Button */}
         <div style={{ marginBottom: '32px' }}>
           <button
@@ -546,7 +572,7 @@ USER QUERY: ${userQuery}`;
             </p>
           )}
         </div>
-
+ 
         {/* Error Display */}
         {error && (
           <div style={{
@@ -560,7 +586,57 @@ USER QUERY: ${userQuery}`;
             ⚠️ {error}
           </div>
         )}
-
+ 
+        {/* Live streaming display — appears while analysis is in progress */}
+        {streamingText && !results && (
+          <section style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(0, 255, 212, 0.2)',
+            borderRadius: '16px',
+            padding: '24px',
+            marginBottom: '24px'
+          }}>
+            <div style={{
+              fontSize: '11px',
+              color: '#00ffd4',
+              letterSpacing: '2px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{
+                display: 'inline-block',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#00ffd4',
+                animation: 'pulse 1s ease-in-out infinite'
+              }} />
+              STREAMING ANALYSIS...
+            </div>
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '12px',
+              padding: '24px',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {streamingText}
+              <span style={{
+                display: 'inline-block',
+                width: '2px',
+                height: '16px',
+                background: '#00ffd4',
+                marginLeft: '2px',
+                animation: 'blink 1s step-end infinite',
+                verticalAlign: 'text-bottom'
+              }} />
+            </div>
+          </section>
+        )}
+ 
         {/* Results Display */}
         {results && (
           <section style={{
@@ -585,7 +661,7 @@ USER QUERY: ${userQuery}`;
             }}>
               ANALYSIS RESULTS
             </div>
-
+ 
             {/* Metadata */}
             <div style={{
               display: 'flex',
@@ -601,7 +677,7 @@ USER QUERY: ${userQuery}`;
               {results.toolsUsed.search && <span>🌐 Web Search</span>}
               {results.toolsUsed.notion && <span>📚 Notion</span>}
             </div>
-
+ 
             {/* Sources used */}
             <div style={{
               display: 'flex',
@@ -626,7 +702,7 @@ USER QUERY: ${userQuery}`;
                 </span>
               ))}
             </div>
-
+ 
             {/* Analysis content */}
             <div style={{
               background: 'rgba(0, 0, 0, 0.3)',
@@ -638,7 +714,7 @@ USER QUERY: ${userQuery}`;
             }}>
               {results.analysis}
             </div>
-
+ 
             {/* Action buttons */}
             <div style={{
               display: 'flex',
@@ -714,7 +790,7 @@ USER QUERY: ${userQuery}`;
             </div>
           </section>
         )}
-
+ 
         {/* Database Links */}
         <section style={{
           marginTop: '48px',
@@ -767,10 +843,18 @@ USER QUERY: ${userQuery}`;
           </div>
         </section>
       </main>
-
+ 
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
         * {
           box-sizing: border-box;
@@ -800,3 +884,4 @@ USER QUERY: ${userQuery}`;
     </div>
   );
 }
+ 
